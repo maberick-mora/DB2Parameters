@@ -1,0 +1,34 @@
+- name: Update DB2 parameters in all db2u namespaces
+  hosts: "{{ k8s_cluster_name }}"
+  vars:
+    cloud: "{{ hostvars[inventory_hostname].cloud if awx_job_id is defined else '' }}"
+    k8s_cluster_name: "{{ hostvars[inventory_hostname].k8s_cluster_name if awx_job_id is defined else '' }}"
+    ibmcloud_api_key: ""
+    k8s_namespace: "default"
+  roles:
+    - ibmcloud_auth
+
+  tasks:
+    - name: Apply DB2 parameter updates in db2u-0 pods
+      shell: |
+        for ns in $(kubectl --kubeconfig {{ kubeconfig_path }} get ns -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep db2u); do
+          for pod in $(kubectl --kubeconfig {{ kubeconfig_path }} get pods -n "$ns" -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep 'db2u-0$'); do
+            echo "Updating DB2 parameters in cluster {{ k8s_cluster_name }}, pod $pod in namespace $ns..."
+            kubectl --kubeconfig {{ kubeconfig_path }} exec -n "$ns" "$pod" -c db2u -- su - db2inst1 -c '
+              db2set DB2_USE_ALTERNATE_PAGE_CLEANING=ON
+
+              db2 update dbm cfg using AGENT_STACK_SZ 1024
+
+              db2 update db cfg for BLUDB using AUTO_REORG OFF
+            '
+          done
+        done
+        echo "Changes completed in cluster {{ k8s_cluster_name }}."
+      register: db2_update_output
+      retries: 3
+      delay: 5
+      until: db2_update_output.rc == 0
+
+    - name: Show DB2 update output
+      debug:
+        var: db2_update_output.stdout
