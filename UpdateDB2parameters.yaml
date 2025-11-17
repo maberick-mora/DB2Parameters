@@ -5,9 +5,6 @@
     k8s_cluster_name: "{{ hostvars[inventory_hostname].k8s_cluster_name if awx_job_id is defined else '' }}"
     ibmcloud_api_key: ""
     k8s_namespace: "default"
-  roles:
-    - ibmcloud_auth
-
   tasks:
     - name: Apply DB2 parameter updates in db2u-0 pods
       shell: |
